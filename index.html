@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSM MBTiles Extractor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <link href="style.css" rel="stylesheet" />
+</head>
+
+<body
+    class="bg-gradient-to-br from-indigo-50 via-gray-50 to-blue-100 min-h-screen flex items-center justify-center p-6">
+
+    <div
+        class="glass-panel max-w-6xl w-full rounded-3xl shadow-[0_20px_50px_rgba(8,_112,_184,_0.07)] p-8 border border-white relative overflow-hidden">
+        <!-- Decorative blobs -->
+        <div
+            class="absolute -top-32 -right-32 w-64 h-64 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse">
+        </div>
+        <div class="absolute -bottom-32 -left-32 w-64 h-64 bg-indigo-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse"
+            style="animation-delay: 2s;"></div>
+
+        <div class="relative z-10">
+            <div class="text-center mb-8">
+                <div
+                    class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 shadow-lg shadow-blue-500/30 mb-4">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                        </path>
+                    </svg>
+                </div>
+                <h1
+                    class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600 mb-2 tracking-tight">
+                    OSM MBTiles Extractor</h1>
+                <p class="text-sm text-gray-500 font-medium">Tool to download and extract offline maps directly in the
+                    browser</p>
+            </div>
+
+            <!-- Tabs for Input Method -->
+            <div class="flex bg-gray-100/80 p-1 rounded-xl mb-6 shadow-sm border border-gray-200/50">
+                <button id="tabRegion"
+                    class="flex-1 py-2.5 text-xs sm:text-sm font-semibold rounded-lg bg-white shadow-sm text-blue-600 transition-all border border-gray-200/30">Download
+                    Map</button>
+                <button id="tabFile"
+                    class="flex-1 py-2.5 text-xs sm:text-sm font-semibold rounded-lg text-gray-500 hover:text-gray-700 hover:bg-white/50 transition-all">Extract
+                    by Zoom Level</button>
+            </div>
+
+            <!-- Dropzone -->
+            <div id="dropzoneContainer" class="mb-8 hidden transition-all duration-300">
+                <div id="dropzone"
+                    class="border-2 border-dashed border-blue-200 rounded-2xl p-10 text-center cursor-pointer transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/50 group bg-white/50 backdrop-blur-sm">
+                    <div
+                        class="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 group-hover:bg-blue-100">
+                        <svg class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                    </div>
+                    <p class="text-base text-gray-700 font-semibold mb-1" id="dropzoneMainText">Drag & Drop .mbtiles
+                        file here</p>
+                    <p class="text-sm text-gray-400" id="dropzoneSubText">Or click to select a file from your computer
+                    </p>
+                    <input type="file" id="fileInput" class="hidden" accept=".mbtiles" />
+                </div>
+                <div class="mt-4 flex justify-center">
+                    <div
+                        class="inline-flex items-center text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100 font-medium rounded-xl shadow-sm">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
+                            </path>
+                        </svg>
+                        Recommendation: Works best with files &lt; 1GB to avoid RAM saturation
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- Region Input -->
+            <div id="regionContainer" class="mb-8 transition-all duration-300 backdrop-blur-sm relative z-30">
+                <div class="lg:flex lg:gap-6 items-stretch">
+                    <!-- Left Column: Search & Tree -->
+                    <div class="lg:w-1/2 flex flex-col relative w-full mb-4 lg:mb-0">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2 flex items-center justify-between">
+                            Search and select a region
+                            <span id="regionLoading" class="hidden text-xs text-blue-500 flex items-center"><svg
+                                    class="animate-spin -ml-1 mr-1 h-3 w-3 text-blue-500"
+                                    xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                        stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                    </path>
+                                </svg>Loading data...</span>
+                        </label>
+
+                        <!-- Search Input -->
+                        <div class="relative mb-3 shrink-0">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </div>
+                            <input type="text" id="regionSearchInput"
+                                placeholder="Enter country or region name to search..."
+                                class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out">
+                        </div>
+
+                        <!-- Region Tree View -->
+                        <div id="regionTreeContainer"
+                            class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 max-h-[26rem] overflow-y-auto custom-scrollbar flex-1">
+                            <!-- Tree nodes injected here -->
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Info & Map Preview -->
+                    <div class="lg:w-1/2 flex flex-col w-full h-full min-h-[22rem]">
+                        <!-- Selected region display -->
+                        <div id="selectedRegionText"
+                            class="p-3 mt-6 bg-blue-50 rounded-xl border border-blue-100 text-sm text-gray-700 shadow-sm transition-all shrink-0">
+                            <div class="flex items-center text-gray-500">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                No region selected.
+                            </div>
+                        </div>
+
+                        <!-- Map preview -->
+                        <div id="mapPreviewContainer"
+                            class="mt-4 hidden min-h-[16rem] flex-1 rounded-xl border border-gray-200 overflow-hidden relative shadow-sm">
+                            <div id="map" class="w-full h-full absolute inset-0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Download Section -->
+                <div id="regionDownloadSection"
+                    class="hidden mt-4 bg-blue-50/50 border border-blue-100 rounded-xl p-5 text-center transition-all w-full">
+                    <p class="text-sm font-semibold text-gray-800 mb-3 block">Download link is ready:</p>
+                    <a id="regionDownloadBtn" href="#" download
+                        class="inline-flex w-full items-center justify-center px-4 py-3 border border-transparent text-sm font-bold rounded-xl shadow-sm text-white bg-green-600 hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed pointer-events-none opacity-50">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Click to download from MapTiler server (.mbtiles)
+                    </a>
+                </div>
+            </div>
+
+            <!-- Configuration Box -->
+            <div id="configBox"
+                class="bg-gray-50/50 rounded-2xl p-6 border border-gray-100/80 mb-8 hidden backdrop-blur-sm shadow-sm ring-1 ring-black/5">
+                <h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                        </path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    Extraction Options
+                </h3>
+
+                <div class="grid grid-cols-2 gap-5 mb-5">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">From Zoom
+                            Level (Min)</label>
+                        <input type="number" id="minZoom" value="0" min="0" max="22"
+                            class="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium transition-shadow" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">To Zoom
+                            Level (Max)</label>
+                        <input type="number" id="maxZoom" value="10" min="0" max="22"
+                            class="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium transition-shadow" />
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Output
+                        Filename</label>
+                    <input type="text" id="outputName" value="extracted_lite.mbtiles"
+                        class="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium transition-shadow" />
+                </div>
+            </div>
+
+            <!-- Run action -->
+            <button id="processBtn"
+                class="group hidden relative w-full flex justify-center py-4 px-4 border border-transparent text-base font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg shadow-blue-500/30 transform transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed overflow-hidden">
+                <span
+                    class="absolute w-0 h-0 transition-all duration-500 ease-out bg-white rounded-full group-hover:w-[200%] group-hover:h-56 opacity-10"></span>
+                <span class="relative flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                            d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                    </svg>
+                    START EXTRACTION
+                </span>
+            </button>
+
+            <div id="statusContainer" class="mt-8 hidden animate-fade-in-up">
+                <div class="flex items-center justify-between mb-2 px-1">
+                    <h4 class="text-sm font-bold text-gray-700 flex items-center">
+                        <svg class="w-4 h-4 mr-1.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                        Process Status
+                    </h4>
+                    <span class="relative flex h-3 w-3">
+                        <span
+                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                </div>
+                <div
+                    class="bg-[#0f172a] rounded-xl p-4 shadow-inner max-h-56 overflow-y-auto custom-scrollbar border border-gray-800">
+                    <p id="statusLog"
+                        class="text-[13px] text-green-400 font-mono whitespace-pre-wrap leading-relaxed tracking-tight">
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="metadata.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>
