@@ -190,10 +190,16 @@ def main():
     with open(source_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
+    import hashlib
+
     # Standardize transportation identification properties
     if 'features' in data:
         for feature in data['features']:
             feature['properties'] = { "class": "service", "highway": "service" }
+            if 'id' in feature and isinstance(feature['id'], str):
+                hash_object = hashlib.sha256(feature['id'].encode())
+                numeric_id = int(hash_object.hexdigest(), 16) % (10 ** 15)
+                feature['id'] = numeric_id
     
     with open(target_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False)
